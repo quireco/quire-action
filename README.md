@@ -98,6 +98,8 @@ The job summary carries the result, links to the Run and Trail, and Quire's full
 - **Cancellation.** When the job is cancelled (a newer push, or the Cancel button), the action
   cancels the hosted Run too, so it doesn't block later Runs on the Trail.
 - **Requirements.** Node.js 24, which the action installs when the runner has an older version.
-  On Linux it installs Chrome's system libraries with the browser.
+  On Linux it installs Chrome's system libraries with the browser. Browser recordings use the
+  ffmpeg that comes with the CLI, downloaded from GitHub at install; on a self-hosted runner that
+  can't reach GitHub, install ffmpeg on PATH instead.
 - **Test data.** Quire changes data only in state set aside for it: a test account, a fixture
   namespace or a throwaway session, named in the request or in `.quire/runbook.md`.

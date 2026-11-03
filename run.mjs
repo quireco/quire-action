@@ -46,7 +46,9 @@ if (context && (!trail || trail.startsWith("trl_")))
   fail("The `context` input needs a Trail name in `trail`.");
 
 const cli = `@quireco/cli@${input("CLI_VERSION") || "latest"}`;
-const args = ["--yes", "--prefer-online", cli, "run", "--stream-json"];
+// Same flag as the install step, so a fresh npx cache still gets ffmpeg for recordings.
+const ALLOW_FFMPEG = "--allow-scripts=ffmpeg-static";
+const args = ["--yes", "--prefer-online", ALLOW_FFMPEG, cli, "run", "--stream-json"];
 if (input("URL")) args.push("--url", input("URL"));
 if (trail) {
   args.push("--trail", trail);
@@ -71,7 +73,7 @@ const stop = (signal) => {
   if (runId) {
     // Synchronous: process.exit below would drop a pending write to a pipe.
     writeSync(1, `::warning title=Quire::Job cancelled; cancelling ${runId}.\n`);
-    spawnSync("npx", ["--yes", "--prefer-offline", cli, "cancel", runId], {
+    spawnSync("npx", ["--yes", "--prefer-offline", ALLOW_FFMPEG, cli, "cancel", runId], {
       stdio: "inherit",
       env,
       timeout: 6_000,

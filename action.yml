@@ -116,6 +116,8 @@ runs:
 
     # Installs the agent-browser version the selected CLI depends on. On Linux, --with-deps also
     # installs Chrome's system libraries, which container and self-hosted runners often lack.
+    # --allow-scripts lets ffmpeg-static download the ffmpeg that browser recordings need; npm 12
+    # blocks dependency install scripts otherwise. Older npm ignores the flag.
     - name: Install browser
       if: inputs.api-token != '' && inputs.install-browser == 'true'
       shell: bash
@@ -123,7 +125,7 @@ runs:
         QUIRE_CLI_VERSION: ${{ inputs.cli-version }}
       run: |
         deps=$([ "$RUNNER_OS" = Linux ] && echo --with-deps || true)
-        npm exec --yes --prefer-online --package="@quireco/cli@${QUIRE_CLI_VERSION}" -- agent-browser install $deps
+        npm exec --yes --prefer-online --allow-scripts=ffmpeg-static --package="@quireco/cli@${QUIRE_CLI_VERSION}" -- agent-browser install $deps
 
     # Prebuilt per-platform binaries from github.com/anomalyco/terminal-control, published to npm.
     - name: Install terminal-control
