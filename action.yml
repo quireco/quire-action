@@ -1,0 +1,161 @@
+name: Quire
+description: Verify, triage, or re-check your product with Quire, and fail the job when checks fail.
+author: Quire
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  request:
+    description: What Quire should verify, triage, or re-check, in plain language.
+    required: true
+  api-token:
+    description: >-
+      Quire personal access token (Settings → Security), usually `secrets.QUIRE_API_TOKEN`.
+      When it is empty, as on pull requests from forks, the step is skipped with a notice.
+    required: false
+    default: ""
+  url:
+    description: Already-running target URL, such as a preview deployment. Quire never starts the app.
+    required: false
+    default: ""
+  trail:
+    description: >-
+      Trail name or `trl_…` ID to continue. Empty opens a new Trail. A name has one Trail per
+      context, which Quire detects from the event: `main` on the default branch (push, schedule,
+      dispatch), `pr:<number>` in a pull request, and the shared `branch:<branch>` on any other
+      branch. PR and branch Trails read main's checks and latest answers but write only their
+      own history.
+    required: false
+    default: ""
+  context:
+    description: >-
+      Override the detected Trail context: `main`, `pr:<number>` or `branch:<branch>`. Only used
+      with a Trail name.
+    required: false
+    default: ""
+  supersede:
+    description: With a Trail, replace follow-ups still queued behind this one so only the newest commit is checked.
+    required: false
+    default: "true"
+  fail-on:
+    description: >-
+      Comma-separated check results that fail the step: `failed`, `blocked`, or empty to never fail
+      on checks. A Run that does not complete always fails the step.
+    required: false
+    default: failed,blocked
+  cli-version:
+    description: Version of `@quireco/cli` to run.
+    required: false
+    default: latest
+  install-browser:
+    description: Install the browser Quire uses for web checks.
+    required: false
+    default: "true"
+  install-terminal-control:
+    description: >-
+      Install terminal-control (`termctrl`) so Quire can drive, screenshot, and record terminal
+      apps such as TUIs and interactive CLIs.
+    required: false
+    default: "true"
+  terminal-control-version:
+    description: Version of terminal-control to install.
+    required: false
+    default: 1.2.1
+  working-directory:
+    description: Repository checkout Quire runs in.
+    required: false
+    default: "."
+
+outputs:
+  run-id:
+    description: Quire Run ID.
+    value: ${{ steps.quire.outputs.run-id }}
+  trail:
+    description: Trail name (or ID) to continue with.
+    value: ${{ steps.quire.outputs.trail }}
+  trail-url:
+    description: Link to the Trail in Quire, for this context.
+    value: ${{ steps.quire.outputs.trail-url }}
+  web-url:
+    description: Link to the Run in Quire.
+    value: ${{ steps.quire.outputs.web-url }}
+  status:
+    description: Run status (`completed`, `failed`, `canceled`, `stale`), or `skipped` without a token.
+    value: ${{ steps.quire.outputs.status }}
+  passed:
+    description: Passed checks.
+    value: ${{ steps.quire.outputs.passed }}
+  failed:
+    description: Failed checks.
+    value: ${{ steps.quire.outputs.failed }}
+  blocked:
+    description: Blocked checks.
+    value: ${{ steps.quire.outputs.blocked }}
+  handoff-path:
+    description: Path of the exported handoff Markdown, when the Run completed.
+    value: ${{ steps.quire.outputs.handoff-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check Node.js
+      id: node
+      if: inputs.api-token != ''
+      shell: bash
+      run: |
+        major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+        if [ "$major" -ge 24 ]; then echo "setup=false" >> "$GITHUB_OUTPUT"; else echo "setup=true" >> "$GITHUB_OUTPUT"; fi
+
+    # The Quire CLI needs Node.js 24. Installed only when the runner has an older version.
+    - name: Set up Node.js 24
+      if: inputs.api-token != '' && steps.node.outputs.setup == 'true'
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "24"
+
+    # Installs the agent-browser version the selected CLI depends on. On Linux, --with-deps also
+    # installs Chrome's system libraries, which container and self-hosted runners often lack.
+    - name: Install browser
+      if: inputs.api-token != '' && inputs.install-browser == 'true'
+      shell: bash
+      env:
+        QUIRE_CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        deps=$([ "$RUNNER_OS" = Linux ] && echo --with-deps || true)
+        npm exec --yes --prefer-online --package="@quireco/cli@${QUIRE_CLI_VERSION}" -- agent-browser install $deps
+
+    # Prebuilt per-platform binaries from github.com/anomalyco/terminal-control, published to npm.
+    - name: Install terminal-control
+      if: inputs.api-token != '' && inputs.install-terminal-control == 'true'
+      shell: bash
+      env:
+        TERMINAL_CONTROL_VERSION: ${{ inputs.terminal-control-version }}
+      run: |
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) platform=linux-x64-gnu ;;
+          Linux-ARM64) platform=linux-arm64-gnu ;;
+          macOS-X64) platform=darwin-x64 ;;
+          macOS-ARM64) platform=darwin-arm64 ;;
+          *) echo "::error title=Quire::terminal-control has no build for $RUNNER_OS-$RUNNER_ARCH." && exit 1 ;;
+        esac
+        prefix="$RUNNER_TEMP/terminal-control"
+        npm install --global --prefix "$prefix" "@kitlangton/terminal-control-${platform}@${TERMINAL_CONTROL_VERSION}"
+        echo "$prefix/bin" >> "$GITHUB_PATH"
+        "$prefix/bin/termctrl" --version
+
+    - name: Run Quire
+      id: quire
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        QUIRE_API_TOKEN: ${{ inputs.api-token }}
+        QUIRE_INPUT_REQUEST: ${{ inputs.request }}
+        QUIRE_INPUT_URL: ${{ inputs.url }}
+        QUIRE_INPUT_TRAIL: ${{ inputs.trail }}
+        QUIRE_INPUT_CONTEXT: ${{ inputs.context }}
+        QUIRE_INPUT_SUPERSEDE: ${{ inputs.supersede }}
+        QUIRE_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        QUIRE_INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+      # exec: on cancellation GitHub signals this shell, and only node can cancel the hosted Run.
+      run: exec node "$GITHUB_ACTION_PATH/run.mjs"
