@@ -154,19 +154,23 @@ if (result.handoffPath) {
     // The hosted Run stays the source of truth; the link still works.
   }
 }
-summary(
-  [
-    `## Quire · ${result.statusLabel}`,
-    counts,
-    result.webUrl ? `\n[View Quire Run](${result.webUrl})` : "",
-    trailName
-      ? `\nTrail: ${trailUrl ? `[\`${trailName}\`](${trailUrl})` : `\`${trailName}\``}`
-      : "",
-    handoff ? `\n${handoff}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n"),
-);
+// GitHub loads images through an anonymous proxy, and Run artifacts need a Quire sign-in, so
+// embedded screenshots would render broken. Link them instead; they open for signed-in viewers.
+handoff = handoff.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, "[$1]($2)");
+const title = trailName ? (trailUrl ? `[${trailName}](${trailUrl})` : trailName) : "Quire";
+const icon =
+  result.status !== "completed" ? "⚠️" : checks.failed ? "❌" : checks.blocked ? "🟡" : "✅";
+const report = [
+  `### ${icon} ${title}`,
+  result.status === "completed" ? counts : `${result.statusLabel} · ${counts}`,
+  result.webUrl ? `[View Run](${result.webUrl})` : "",
+  result.summary ?? "",
+  handoff ? `<details><summary>Full handoff</summary>\n\n${handoff.trim()}\n\n</details>` : "",
+]
+  .filter(Boolean)
+  .join("\n\n");
+summary(report);
+await commentOnPullRequest(report);
 
 if (result.status !== "completed")
   fail(`Quire Run ${result.status}: ${result.error || result.summary || "no reason reported."}`);
@@ -175,3 +179,54 @@ if (failing.length)
   fail(
     `${failing.map((key) => `${checks[key]} ${key}`).join(", ")} (${counts}). See the job summary.`,
   );
+
+// One comment per Trail on the pull request, updated in place on every Run. Needs
+// `pull-requests: write`; without it the step warns and carries on.
+async function commentOnPullRequest(body) {
+  if (input("COMMENT") === "false") return;
+  const token = input("GITHUB_TOKEN");
+  const repo = env.GITHUB_REPOSITORY;
+  let event = {};
+  try {
+    event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, "utf8"));
+  } catch {
+    // Not running in GitHub Actions.
+  }
+  const number = event.pull_request?.number ?? Number(/^pr:(\d+)$/.exec(context)?.[1]);
+  if (!token || !repo || !number) return;
+  const api = `${env.GITHUB_API_URL || "https://api.github.com"}/repos/${repo}/issues`;
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+  };
+  const marker = `<!-- quire-action trail=${trailName || "none"} -->`;
+  try {
+    let existing;
+    for (let page = 1; !existing; page++) {
+      const response = await fetch(`${api}/${number}/comments?per_page=100&page=${page}`, {
+        headers,
+      });
+      if (!response.ok) throw new Error(`listing comments returned ${response.status}`);
+      const comments = await response.json();
+      existing = comments.find((comment) => comment.body?.startsWith(marker));
+      if (comments.length < 100) break;
+    }
+    const response = await fetch(
+      existing ? `${api}/comments/${existing.id}` : `${api}/${number}/comments`,
+      {
+        method: existing ? "PATCH" : "POST",
+        headers,
+        body: JSON.stringify({ body: `${marker}\n${body}` }),
+      },
+    );
+    if (!response.ok)
+      throw new Error(
+        `${existing ? "updating" : "posting"} the comment returned ${response.status}`,
+      );
+  } catch (error) {
+    console.log(
+      `::warning title=Quire::Could not comment on pull request #${number}: ${error.message}. Give the job \`pull-requests: write\`, or set comment: false.`,
+    );
+  }
+}

@@ -44,6 +44,16 @@ inputs:
       on checks. A Run that does not complete always fails the step.
     required: false
     default: failed,blocked
+  comment:
+    description: >-
+      On pull requests, post the result as a comment and update it on every Run (one comment per
+      Trail). Needs `pull-requests: write`.
+    required: false
+    default: "true"
+  github-token:
+    description: Token used to comment on the pull request.
+    required: false
+    default: ${{ github.token }}
   cli-version:
     description: Version of `@quireco/cli` to run.
     required: false
@@ -159,5 +169,7 @@ runs:
         QUIRE_INPUT_SUPERSEDE: ${{ inputs.supersede }}
         QUIRE_INPUT_FAIL_ON: ${{ inputs.fail-on }}
         QUIRE_INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+        QUIRE_INPUT_COMMENT: ${{ inputs.comment }}
+        QUIRE_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
       # exec: on cancellation GitHub signals this shell, and only node can cancel the hosted Run.
       run: exec node "$GITHUB_ACTION_PATH/run.mjs"

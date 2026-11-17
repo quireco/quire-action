@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write # comment the result on pull requests
 
 jobs:
   quire:
@@ -73,6 +74,8 @@ answers it. Later Runs on the Trail re-check it.
 | `context`                  | `""`             | Override the detected context: `main`, `pr:<number>` or `branch:<name>`. Needs a Trail name.                               |
 | `supersede`                | `true`           | Replace follow-ups still queued on the Trail, so only the newest commit is checked.                                        |
 | `fail-on`                  | `failed,blocked` | Check results that fail the step: `failed`, `blocked`, both, or empty. A Run that does not complete always fails the step. |
+| `comment`                  | `true`           | On pull requests, comment the result and update that comment on every Run, one per Trail. Needs `pull-requests: write`.    |
+| `github-token`             | `github.token`   | Token used for the pull request comment.                                                                                   |
 | `cli-version`              | `latest`         | Version of `@quireco/cli` to run. Trail contexts need 0.6.0 or later.                                                      |
 | `install-browser`          | `true`           | Install the browser Quire uses for web checks.                                                                             |
 | `install-terminal-control` | `true`           | Install terminal-control so Quire can drive terminal apps.                                                                 |
@@ -91,7 +94,9 @@ answers it. Later Runs on the Trail re-check it.
 | `passed`, `failed`, `blocked` | Check counts.                                                             |
 | `handoff-path`                | Path of the exported handoff Markdown, when the Run completed.            |
 
-The job summary carries the result, links to the Run and Trail, and Quire's full handoff.
+The job summary, and on pull requests a comment, shows the Trail, the check counts, a link to
+the Run, its summary and Quire's full handoff, collapsed. Screenshots are links, not images:
+they open for anyone signed in to Quire.
 
 ## Notes
 
